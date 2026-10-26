@@ -57,3 +57,38 @@ de qualquer modelagem.
 - Gap-filling das 77 datas nubladas (interpolação linear)
 - Explorar os dados do Metos Pro para cruzar com as anomalias
 - Definir critério de rotulagem de anomalias para o treino da U-Net
+
+## Feedback do orientador — Out/2026
+
+### Ponto 1: Separação treino/teste
+
+Split aleatório não é adequado para série temporal — imagens adjacentes
+são quase idênticas, o que infla as métricas artificialmente.
+
+Decisão: adotar **leave-one-field-out (LOFO)** — treinar nos 3 talhões,
+testar no 4º. Isso mede se o modelo generaliza para áreas que nunca viu,
+que é o que importa numa aplicação real.
+
+### Ponto 2: U-Net de imagem única vs. anomalias temporais
+
+O U-Net não pode detectar "NDVI baixo por 3 datas consecutivas" olhando
+só uma imagem — isso é uma inconsistência arquitetural real.
+
+Solução adotada: redefinir a anomalia como **desvio do baseline histórico**,
+eliminando a dependência de sequência temporal na inferência:
+
+1. Calcula-se a mediana NDVI por pixel por fase fenológica (usando dados
+   de treino)
+2. Anomalia = pixel com NDVI atual abaixo do esperado para aquela fase
+   (> 1.5 desvio padrão abaixo da mediana histórica)
+3. Entrada do U-Net: **2 canais** — imagem NDVI atual + mapa de desvio
+   do baseline
+
+Assim o contexto temporal fica "embutido" no segundo canal, e o modelo
+opera normalmente com uma única imagem na inferência.
+
+### Impacto no código
+
+- `preprocessamento.py`: adicionar cálculo do baseline por fase fenológica
+- `modelo.py`: entrada com 2 canais (in_channels=2) em vez de 1
+- `rotulagem.py`: gerar máscaras por desvio do baseline, não por sequência
