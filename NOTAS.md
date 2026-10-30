@@ -140,3 +140,24 @@ Em termos práticos:
 - Como tratar pixels próximos à borda do talhão (máscara Band 3)?
 - Validar visualmente ao menos 2–3 datas com anomalia detectada
   contra as imagens JPG correspondentes
+
+## Arquitetura do modelo (out/2026)
+
+Optei por um **U-Net de 3 níveis** adaptado para imagens pequenas (40×54 px).
+
+**Entrada:** 2 canais
+- Canal 0: NDVI atual (gap-filled)
+- Canal 1: desvio normalizado do baseline fenológico
+
+**Saída:** máscara binária 40×54 (sigmoid → anomalia)
+
+**Ajuste técnico:** a largura 54 não é divisível por 8 (necessário para
+3 níveis de pooling), então o modelo aplica padding interno para 56 e
+recorta na saída — transparente para o treino e inferência.
+
+**Função de perda:** BCE + Dice Loss (50/50)
+- BCE penaliza cada pixel individualmente
+- Dice Loss lida melhor com o desbalanceamento de classes
+  (pixels anômalos são minoria nas imagens)
+
+Parâmetros treináveis: ~247 mil — leve o suficiente para treinar em CPU.
