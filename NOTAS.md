@@ -92,3 +92,51 @@ opera normalmente com uma única imagem na inferência.
 - `preprocessamento.py`: adicionar cálculo do baseline por fase fenológica
 - `modelo.py`: entrada com 2 canais (in_channels=2) em vez de 1
 - `rotulagem.py`: gerar máscaras por desvio do baseline, não por sequência
+
+---
+
+## Decisão: escopo temporal da análise (out/2026)
+
+Ao receber os TIFFs completos, o dataset se revelou maior do que o esperado:
+- **428 arquivos** (107 datas × 4 talhões), de ago/2025 até out/2026
+- O período original estimado era 196 imagens até fev/2026
+
+Optei por dois cenários paralelos:
+
+**Cenário SAFRA** (`modo="safra"`)
+- Período: ago/2025 → mai/2026 (~colheita)
+- Foco principal do TCC — cobre o ciclo completo da safra 2025/2026
+- Fases: pré-plantio, crescimento, florescimento, colheita
+
+**Cenário COMPLETO** (`modo="completo"`)
+- Período: ago/2025 → out/2026
+- Inclui pós-colheita e início de possível nova safra
+- Usado como dado de embasamento e comparativo
+
+Os dois cenários geram arquivos `.npz` independentes em `data/processed/`.
+A análise principal e o modelo U-Net usam o cenário SAFRA.
+O cenário COMPLETO entra na discussão dos resultados.
+Será analisado posteriormente o comportamento de análise com ambos misturados para estudos de resultados. 
+
+---
+
+## Definição de anomalia — validar com comitê FarmLab
+
+O critério de anomalia adotado no código é:
+
+> **Pixel é anômalo quando seu NDVI está abaixo de 1,5 desvios padrão
+> do baseline mediano da sua fase fenológica.**
+
+Em termos práticos:
+- O baseline é calculado como a **mediana histórica** de cada pixel,
+  separada por fase (pré-plantio / crescimento / florescimento / colheita)
+- O desvio é normalizado pelo desvio padrão global do pixel ao longo do tempo
+- Limiar: `desvio < -1.5` → anomalia
+
+**Pendente de validação agrônomica:**
+- O limiar -1.5σ é conservador ou permissivo demais para o contexto?
+- Anomalia inclui apenas estresse hídrico/doença, ou também falha no stand
+  (pixel que nunca germinou)?
+- Como tratar pixels próximos à borda do talhão (máscara Band 3)?
+- Validar visualmente ao menos 2–3 datas com anomalia detectada
+  contra as imagens JPG correspondentes
