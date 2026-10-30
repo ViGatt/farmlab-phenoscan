@@ -14,8 +14,8 @@ Ambiente: Python 3.11, rodando no Windows com Anaconda.
 ## Estrutura dos dados (OneSoil / Sentinel-2)
 
 Os dados de satélite vêm da plataforma OneSoil, que processa imagens do
-Sentinel-2 (~10m por pixel). São 196 imagens no total: 4 talhões × 49 datas,
-cobrindo agosto de 2025 a fevereiro de 2026.
+Sentinel-2 (~10m por pixel). O dataset completo tem **428 arquivos**:
+4 talhões × 107 datas, cobrindo agosto de 2025 a outubro de 2026.
 
 Cada arquivo segue o padrão:
 `ndvi_raw_{UUID-do-talhão}_{YYYY-MM-DD}.tiff`
@@ -25,9 +25,11 @@ Cada imagem tem 3 bandas:
 - Banda 2: máscara de qualidade (0 = pixel válido)
 - Banda 3: máscara do talhão (delimita a área agrícola)
 
-O arquivo `ndvi_metadata.csv` funciona como índice — tem 196 linhas com
-estatísticas de cada imagem: NDVI médio, mín, máx, desvio padrão, e
-porcentagem de cada classe de vegetação.
+Os talhões têm dimensões espaciais diferentes:
+- silagem_conv : 40 × 54 px
+- grao_40      : 56 × 89 px
+- grao_conv    : 55 × 98 px
+- silagem_40   : 51 × 41 px
 
 ---
 
@@ -46,17 +48,11 @@ Uma queda brusca aparece em janeiro, simultânea nos 4 talhões. Pode ser
 um evento real de estresse ou passagem de nuvem parcial — vai ser
 interessante investigar isso depois com os dados meteorológicos do Metos.
 
-Das 196 imagens, 119 são válidas e 77 estão completamente nubladas.
-Essas datas nubladas precisam ser preenchidas por interpolação antes
-de qualquer modelagem.
+Das 107 datas, ~62–66% são válidas por talhão e o restante está completamente
+nublado. Essas datas nubladas são preenchidas por interpolação linear
+pixel a pixel antes de qualquer modelagem.
 
 ---
-
-## PROXIMO
-
-- Gap-filling das 77 datas nubladas (interpolação linear)
-- Explorar os dados do Metos Pro para cruzar com as anomalias
-- Definir critério de rotulagem de anomalias para o treino da U-Net
 
 ## Feedback do orientador — Out/2026
 
@@ -116,7 +112,8 @@ Optei por dois cenários paralelos:
 Os dois cenários geram arquivos `.npz` independentes em `data/processed/`.
 A análise principal e o modelo U-Net usam o cenário SAFRA.
 O cenário COMPLETO entra na discussão dos resultados.
-Será analisado posteriormente o comportamento de análise com ambos misturados para estudos de resultados. 
+Será analisado posteriormente o comportamento com ambos misturados para
+estudos comparativos.
 
 ---
 
@@ -133,7 +130,7 @@ Em termos práticos:
 - O desvio é normalizado pelo desvio padrão global do pixel ao longo do tempo
 - Limiar: `desvio < -1.5` → anomalia
 
-**Pendente de validação agrônomica:**
+**Pendente de validação agronômica:**
 - O limiar -1.5σ é conservador ou permissivo demais para o contexto?
 - Anomalia inclui apenas estresse hídrico/doença, ou também falha no stand
   (pixel que nunca germinou)?
@@ -141,23 +138,66 @@ Em termos práticos:
 - Validar visualmente ao menos 2–3 datas com anomalia detectada
   contra as imagens JPG correspondentes
 
+---
+
 ## Arquitetura do modelo (out/2026)
 
-Optei por um **U-Net de 3 níveis** adaptado para imagens pequenas (40×54 px).
+Optei por um **U-Net de 3 níveis** adaptado para imagens pequenas.
 
-**Entrada:** 2 canais
+**Entrada:** 2 canais, padded para tamanho comum (56 × 104 px)
 - Canal 0: NDVI atual (gap-filled)
 - Canal 1: desvio normalizado do baseline fenológico
 
-**Saída:** máscara binária 40×54 (sigmoid → anomalia)
+**Saída:** máscara binária no tamanho original do talhão (sigmoid → anomalia)
 
-**Ajuste técnico:** a largura 54 não é divisível por 8 (necessário para
-3 níveis de pooling), então o modelo aplica padding interno para 56 e
-recorta na saída — transparente para o treino e inferência.
+**Ajuste técnico:** os talhões têm dimensões espaciais diferentes (de 40×54
+a 55×98 px). Para montar batches, todas as imagens são paddadas com zeros
+para o tamanho comum (56 × 104), ambos divisíveis por 8 — necessário para
+os 3 níveis de max-pooling do U-Net.
 
 **Função de perda:** BCE + Dice Loss (50/50)
 - BCE penaliza cada pixel individualmente
 - Dice Loss lida melhor com o desbalanceamento de classes
   (pixels anômalos são minoria nas imagens)
 
-Parâmetros treináveis: ~247 mil — leve o suficiente para treinar em CPU.
+Parâmetros treináveis: ~483 mil — adequado para treinar em CPU.
+
+---
+
+## Treinamento — decisões (out/2026)
+
+**Split LOFO:** talhão de teste = `grao_40` (258e47e0)
+- Treino: silagem_conv, grao_conv, silagem_40 — 204 amostras
+- Validação: 15% do treino, separada aleatoriamente — ~30 amostras
+- Teste: grao_40 — 68 amostras, nunca visto durante treino
+
+**Hiperparâmetros iniciais:**
+- Épocas: 50 | Batch: 8 | LR: 1e-3 (ReduceLROnPlateau, paciência 5)
+- Otimizador: Adam | Perda: Dice + BCE (50/50)
+
+**Métricas de avaliação:** Dice Score e IoU no talhão de teste
+(ambas adequadas para segmentação com classes desbalanceadas)
+
+Pendente: avaliar se 50 épocas é suficiente; considerar data augmentation
+(flip horizontal/vertical) se o Dice de validação estabilizar baixo.
+
+---
+
+## Resultado do primeiro treino (out/2026)
+
+Treino concluído: 50 épocas, CPU, ~204 amostras de treino.
+
+**Talhão de teste: grao_40 (nunca visto no treino)**
+- Dice Score : **0.8372**
+- IoU Score  : **0.7474**
+
+Resultado acima do esperado para primeira rodada sem data augmentation.
+Na literatura de segmentação agrícola, Dice > 0.75 é referência de qualidade.
+
+
+## PRÓXIMO
+
+- Validar anomalias detectadas visualmente contra JPGs
+- Cruzar datas de anomalia com dados meteorológicos do Metos
+- Definir critério final de anomalia com comitê FarmLab
+- Módulo de geração de relatório com LangChain
