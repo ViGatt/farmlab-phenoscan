@@ -65,24 +65,15 @@ class UNet(nn.Module):
         return x[:, :, :, 1:-1]
 
     def forward(self, x):
-        x = self._pad(x)  # (B, 2, 40, 56)
-
-        # Encoder + skip connections
-        s1 = self.enc1(x)              # (B, 16, 40, 56)
-        s2 = self.enc2(self.pool(s1))  # (B, 32, 20, 28)
-        s3 = self.enc3(self.pool(s2))  # (B, 64, 10, 14)
-
-        # Bottleneck
-        b = self.bottleneck(self.pool(s3))  # (B, 128, 5, 7)
-
-        # Decoder
-        d3 = self.dec3(torch.cat([self.up3(b), s3], dim=1))   # (B, 64, 10, 14)
-        d2 = self.dec2(torch.cat([self.up2(d3), s2], dim=1))  # (B, 32, 20, 28)
-        d1 = self.dec1(torch.cat([self.up1(d2), s1], dim=1))  # (B, 16, 40, 56)
-
-        out = self.saida(d1)   # (B, 1, 40, 56)
-        return self._crop(out) # (B, 1, 40, 54)
-
+        # Sem padding interno — o Dataset garante tamanho correto
+        s1 = self.enc1(x)
+        s2 = self.enc2(self.pool(s1))
+        s3 = self.enc3(self.pool(s2))
+        b  = self.bottleneck(self.pool(s3))
+        d3 = self.dec3(torch.cat([self.up3(b),  s3], dim=1))
+        d2 = self.dec2(torch.cat([self.up2(d3), s2], dim=1))
+        d1 = self.dec1(torch.cat([self.up1(d2), s1], dim=1))
+        return self.saida(d1)
 
 # ── Funções de perda ─────────────────────────────────────────────────────────
 
