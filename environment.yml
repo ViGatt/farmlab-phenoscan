@@ -1,0 +1,15 @@
+name: farmlab-phenoscan
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - rasterio
+  - numpy
+  - pandas
+  - pyarrow
+  - matplotlib
+  - jupyter
+  - pytorch
+  - torchvision
+  - pip
