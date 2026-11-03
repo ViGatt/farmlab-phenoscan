@@ -194,10 +194,29 @@ Treino concluído: 50 épocas, CPU, ~204 amostras de treino.
 Resultado acima do esperado para primeira rodada sem data augmentation.
 Na literatura de segmentação agrícola, Dice > 0.75 é referência de qualidade.
 
+## Validação visual das predições (nov/2026)
+
+Geradas 9 figuras comparativas para o talhão de teste `grao_40`
+(6 datas mais anômalas + 3 normais). Observações:
+
+**Modelo acerta bem:**
+- Datas de pré-plantio (ago/2025): corretamente sem anomalias
+- Grandes manchas anômalas (jan/2026) capturadas com boa fidelidade
+- A forma das regiões é preservada, não só a localização
+
+**Padrões a validar com o comitê FarmLab:**
+1. **Listras diagonais recorrentes** em várias datas — muito lineares
+   para estresse natural. Hipótese: carreadores internos ou linhas de
+   plantio com menor densidade vegetal
+2. **2026-01-06: divisão do talhão ao meio** — metade superior saudável,
+   metade inferior anômala. Achado mais relevante da validação.
+   Hipóteses: diferença de data de plantio, estresse hídrico localizado,
+   ou diferença de manejo entre parcelas
+
 
 ## PRÓXIMO
 
-- Validar anomalias detectadas visualmente contra JPGs
+
 - Cruzar datas de anomalia com dados meteorológicos do Metos
 - Definir critério final de anomalia com comitê FarmLab
 - Módulo de geração de relatório com LangChain
